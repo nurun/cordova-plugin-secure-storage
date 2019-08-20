@@ -53,7 +53,14 @@
         <source-file src="src/android/SecureStorage.java" target-dir="src/com/crypho/plugins/" />
         <source-file src="src/android/RSA.java" target-dir="src/com/crypho/plugins/" />
         <source-file src="src/android/AES.java" target-dir="src/com/crypho/plugins/" />
-        <source-file src="src/android/SharedPreferencesHandler.java" target-dir="src/com/crypho/plugins/" />
+        <source-file src="src/android/Data.java" target-dir="src/com/crypho/plugins/" />
+        <source-file src="src/android/DataChunk.java" target-dir="src/com/crypho/plugins/" />
+        <source-file src="src/android/DataChunkDAO.java" target-dir="src/com/crypho/plugins/" />
+        <source-file src="src/android/DataDAO.java" target-dir="src/com/crypho/plugins/" />
+        <source-file src="src/android/DataDatabase.java" target-dir="src/com/crypho/plugins/" />
+        
+        <framework src="androidx.room:room-runtime:2.2.0-alpha02" />
+        <framework src="androidx.room:room-compiler:2.2.0-alpha02" />
     </platform>
 
     <platform name="browser">
