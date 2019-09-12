@@ -145,6 +145,12 @@ public class SecureStorage extends CordovaPlugin {
                             currentPosition = index;
                             index += chunkSize;
 
+
+                            valueToEncrypt = null;
+                            result = null;
+                            aes_key = null;
+                            aes_key_enc = null;
+
                         } catch (Exception e) {
                             Log.e(TAG, "Encrypt failed :", e);
                             getStorage(service).dataDao().clearKey(key + "%");
@@ -174,16 +180,25 @@ public class SecureStorage extends CordovaPlugin {
                             JSONObject json = null;
                             try {
                                 json = new JSONObject(chunkValue);
-                                final byte[] encKey = Base64.decode(json.getString("key"), Base64.DEFAULT);
+                                byte[] encKey = Base64.decode(json.getString("key"), Base64.DEFAULT);
                                 JSONObject data = json.getJSONObject("value");
-                                final byte[] ct = Base64.decode(data.getString("ct"), Base64.DEFAULT);
-                                final byte[] iv = Base64.decode(data.getString("iv"), Base64.DEFAULT);
-                                final byte[] adata = Base64.decode(data.getString("adata"), Base64.DEFAULT);
+                                byte[] ct = Base64.decode(data.getString("ct"), Base64.DEFAULT);
+                                byte[] iv = Base64.decode(data.getString("iv"), Base64.DEFAULT);
+                                byte[] adata = Base64.decode(data.getString("adata"), Base64.DEFAULT);
 
                                 try {
                                     byte[] decryptedKey = RSA.decrypt(encKey, service2alias(service));
                                     String decrypted = new String(AES.decrypt(ct, decryptedKey, iv, adata));
                                     valueToReturn = valueToReturn.concat(decrypted);
+
+                                    chunkValue = null;
+                                    json = null;
+                                    encKey = null;
+                                    ct = null;
+                                    iv = null;
+                                    adata = null;
+                                    decryptedKey = null;
+                                    decrypted = null;
                                 } catch (Exception e) {
                                     Log.e(TAG, "Decrypt failed :", e);
                                     callbackContext.error(e.getMessage());
