@@ -4,7 +4,6 @@ import android.app.KeyguardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
-import android.util.Base64;
 import android.util.Log;
 
 import org.apache.cordova.CallbackContext;
@@ -17,8 +16,6 @@ import org.json.JSONObject;
 import java.lang.reflect.Method;
 import java.util.Hashtable;
 
-import static androidx.room.Room.databaseBuilder;
-
 public class SecureStorage extends CordovaPlugin {
     private static final String TAG = "SecureStorage";
 
@@ -27,7 +24,7 @@ public class SecureStorage extends CordovaPlugin {
     private static final String MSG_NOT_SUPPORTED = "API 21 (Android 5.0 Lollipop) is required. This device is running API " + Build.VERSION.SDK_INT;
     private static final String MSG_DEVICE_NOT_SECURE = "Device is not secure";
 
-    private Hashtable<String, DataDatabase> SERVICE_STORAGE = new Hashtable<String, DataDatabase>();
+    private Hashtable<String, DatabaseManager> SERVICE_STORAGE = new Hashtable<String, DatabaseManager>();
     private String INIT_SERVICE;
     private String INIT_PACKAGENAME;
     private volatile CallbackContext initContext, secureDeviceContext;
@@ -52,7 +49,7 @@ public class SecureStorage extends CordovaPlugin {
                         String alias = service2alias(INIT_SERVICE);
                         if (!RSA.isEntryAvailable(alias)) {
                             //Solves Issue #96. The RSA key may have been deleted by changing the lock type.
-                            getStorage(INIT_SERVICE).clearAllTables();
+                            getStorage(INIT_SERVICE).clear();
                             RSA.createKeyPair(getContext(), alias);
                         }
                         initSuccess(initContext);
@@ -97,8 +94,6 @@ public class SecureStorage extends CordovaPlugin {
             String alias = service2alias(service);
             INIT_SERVICE = service;
 
-            DataDatabase db = databaseBuilder(ctx, DataDatabase.class, "secure-storage").allowMainThreadQueries().fallbackToDestructiveMigration().build();
-            SERVICE_STORAGE.put(service, db);
 
             if (!isDeviceSecure()) {
                 Log.e(TAG, MSG_DEVICE_NOT_SECURE);
@@ -107,8 +102,11 @@ public class SecureStorage extends CordovaPlugin {
                 initContext = callbackContext;
                 unlockCredentials();
             } else {
+                DatabaseManager databaseManager = new DatabaseManager(ctx, service, INIT_PACKAGENAME + "secure_storage");
+                SERVICE_STORAGE.put(service, databaseManager);
                 initSuccess(callbackContext);
             }
+
             return true;
         }
         if ("set".equals(action)) {
@@ -119,47 +117,12 @@ public class SecureStorage extends CordovaPlugin {
 
             cordova.getThreadPool().execute(new Runnable() {
                 public void run() {
-
-                    int chunkSize = 50000;
-                    int numberOfChunk = 0;
-                    int currentPosition = 0;
-                    int index = chunkSize;
-                    boolean done = false;
-                    while (!done) {
-                        numberOfChunk++;
-
-                        if (index >= value.length()) {
-                            index = value.length();
-                            done = true;
-                        }
-
-                        String valueToEncrypt = value.substring(currentPosition, index);
-                        try {
-                            JSONObject result = AES.encrypt(valueToEncrypt.getBytes(), adata.getBytes());
-                            byte[] aes_key = Base64.decode(result.getString("key"), Base64.DEFAULT);
-                            byte[] aes_key_enc = RSA.encrypt(aes_key, service2alias(service));
-                            result.put("key", Base64.encodeToString(aes_key_enc, Base64.DEFAULT));
-
-                            getStorage(service).dataDao().store(new Data(key + numberOfChunk, result.toString()));
-
-                            currentPosition = index;
-                            index += chunkSize;
-
-
-                            valueToEncrypt = null;
-                            result = null;
-                            aes_key = null;
-                            aes_key_enc = null;
-
-                        } catch (Exception e) {
-                            Log.e(TAG, "Encrypt failed :", e);
-                            getStorage(service).dataDao().clearKey(key + "%");
-                            callbackContext.error(e.getMessage());
-                            break;
-                        }
+                    try {
+                        getStorage(service).set(key, value);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Encrypt failed :", e);
+                        callbackContext.error(e.getMessage());
                     }
-
-                    getStorage(service).dataChunkDao().store(new DataChunk(key, numberOfChunk));
                     callbackContext.success(key);
                 }
             });
@@ -168,52 +131,12 @@ public class SecureStorage extends CordovaPlugin {
         if ("get".equals(action)) {
             final String service = args.getString(0);
             final String key = args.getString(1);
-
-            int numberOfChunks = getStorage(service).dataChunkDao().fetch(key);
-
-            if (numberOfChunks > 0) {
-                cordova.getThreadPool().execute(new Runnable() {
-                    public void run() {
-                        String valueToReturn = "";
-                        for (int i = 1; i <= numberOfChunks; i++) {
-                            String chunkValue = getStorage(service).dataDao().fetch(key + i);
-                            JSONObject json = null;
-                            try {
-                                json = new JSONObject(chunkValue);
-                                byte[] encKey = Base64.decode(json.getString("key"), Base64.DEFAULT);
-                                JSONObject data = json.getJSONObject("value");
-                                byte[] ct = Base64.decode(data.getString("ct"), Base64.DEFAULT);
-                                byte[] iv = Base64.decode(data.getString("iv"), Base64.DEFAULT);
-                                byte[] adata = Base64.decode(data.getString("adata"), Base64.DEFAULT);
-
-                                try {
-                                    byte[] decryptedKey = RSA.decrypt(encKey, service2alias(service));
-                                    String decrypted = new String(AES.decrypt(ct, decryptedKey, iv, adata));
-                                    valueToReturn = valueToReturn.concat(decrypted);
-
-                                    chunkValue = null;
-                                    json = null;
-                                    encKey = null;
-                                    ct = null;
-                                    iv = null;
-                                    adata = null;
-                                    decryptedKey = null;
-                                    decrypted = null;
-                                } catch (Exception e) {
-                                    Log.e(TAG, "Decrypt failed :", e);
-                                    callbackContext.error(e.getMessage());
-                                    break;
-                                }
-                            } catch (JSONException e) {
-                                e.printStackTrace();
-                            }
-                        }
-                        callbackContext.success(valueToReturn);
-                    }
-                });
-            } else {
-                callbackContext.error("Key [" + key + "] not found.");
-            }
+            cordova.getThreadPool().execute(new Runnable() {
+                public void run() {
+                    String value = getStorage(service).get(key);
+                    callbackContext.success(value);
+                }
+            });
             return true;
         }
         if ("secureDevice".equals(action)) {
@@ -224,20 +147,18 @@ public class SecureStorage extends CordovaPlugin {
         if ("remove".equals(action)) {
             String service = args.getString(0);
             String key = args.getString(1);
-            getStorage(service).dataDao().remove(key);
-            getStorage(service).dataChunkDao().remove(key);
+            getStorage(service).remove(key);
             callbackContext.success(key);
             return true;
         }
         if ("keys".equals(action)) {
             String service = args.getString(0);
-            callbackContext.success(new JSONArray(getStorage(service).dataChunkDao().keys()));
+            callbackContext.success(new JSONArray(getStorage(service).keys()));
             return true;
         }
         if ("clear".equals(action)) {
             String service = args.getString(0);
-            getStorage(service).dataDao().clear();
-            getStorage(service).dataChunkDao().clear();
+            getStorage(service).clear();
             callbackContext.success();
             return true;
         }
@@ -260,7 +181,7 @@ public class SecureStorage extends CordovaPlugin {
         return res;
     }
 
-    private DataDatabase getStorage(String service) {
+    private DatabaseManager getStorage(String service) {
         return SERVICE_STORAGE.get(service);
     }
 
