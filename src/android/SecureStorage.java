@@ -153,7 +153,7 @@ public class SecureStorage extends CordovaPlugin {
         }
         if ("keys".equals(action)) {
             String service = args.getString(0);
-            callbackContext.success(new JSONArray(getStorage(service).keys()));
+            callbackContext.success(getStorage(service).keys());
             return true;
         }
         if ("clear".equals(action)) {
