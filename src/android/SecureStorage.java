@@ -102,13 +102,15 @@ public class SecureStorage extends CordovaPlugin {
                 Log.e(TAG, MSG_DEVICE_NOT_SECURE);
                 callbackContext.error(MSG_DEVICE_NOT_SECURE);
             } else if (!RSA.isEntryAvailable(alias)) {
+                // Deprecated for SDK version > 26
                 initContext = callbackContext;
                 unlockCredentials();
-            } else {
-                DatabaseManager databaseManager = new DatabaseManager(ctx, service, INIT_PACKAGENAME + "secure_storage");
-                SERVICE_STORAGE.put(service, databaseManager);
-                initSuccess(callbackContext);
             }
+
+            // Quick fix: Create database anyway
+            DatabaseManager databaseManager = new DatabaseManager(ctx, service, INIT_PACKAGENAME + "secure_storage");
+            SERVICE_STORAGE.put(service, databaseManager);
+            initSuccess(callbackContext);
 
             return true;
         }
@@ -161,8 +163,14 @@ public class SecureStorage extends CordovaPlugin {
         }
         if ("clear".equals(action)) {
             String service = args.getString(0);
-            getStorage(service).clear();
-            callbackContext.success();
+            // Isolate action to improve prefs
+            cordova.getThreadPool().execute(new Runnable() {
+                public void run() {
+                    getStorage(service).clear();
+                    callbackContext.success();
+                }
+            });
+
             return true;
         }
         return false;
