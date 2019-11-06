@@ -49,7 +49,10 @@ public class SecureStorage extends CordovaPlugin {
                         String alias = service2alias(INIT_SERVICE);
                         if (!RSA.isEntryAvailable(alias)) {
                             //Solves Issue #96. The RSA key may have been deleted by changing the lock type.
-                            getStorage(INIT_SERVICE).clear();
+                            if(SERVICE_STORAGE.containsKey(INIT_SERVICE)){
+                                getStorage(INIT_SERVICE).clear();    
+                            }
+                            
                             RSA.createKeyPair(getContext(), alias);
                         }
                         initSuccess(initContext);
