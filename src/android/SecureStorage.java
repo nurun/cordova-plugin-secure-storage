@@ -146,7 +146,12 @@ public class SecureStorage extends CordovaPlugin {
         }
         if ("secureDevice".equals(action)) {
             secureDeviceContext = callbackContext;
-            unlockCredentials();
+
+            Boolean isSecure = isDeviceSecure();
+            JSONObject response = new JSONObject();
+            response.put("isDeviceSecure", isSecure);
+            callbackContext.success(response);
+            
             return true;
         }
         if ("remove".equals(action)) {
